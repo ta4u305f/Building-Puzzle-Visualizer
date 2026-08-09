@@ -124,10 +124,14 @@ test("keeps parser, interactions, three.js rendering, and GitHub Pages assets", 
   assert.match(page, /south: 0/);
   assert.match(page, /west: -90/);
   assert.match(page, /east: 90/);
+  assert.match(page, /return \{ tilt: 90/);
+  assert.match(page, /Math\.min\(90, drag\.tilt/);
   assert.match(page, /const INITIAL_DATA = parsePuzzleText\(EXAMPLE_TEXT\)/);
   assert.match(page, /copyGrid\(INITIAL_DATA\.grid\)/);
   assert.match(page, /setGrid\(copyGrid\(nextPuzzle\.solution\)\)/);
   assert.match(page, /className="height-legend"/);
+  assert.match(page, /視点ボタンを隠す/);
+  assert.match(page, /aria-controls="viewpoint-controls"/);
   assert.match(renderer, /高さ \$\{height\} の直方体/);
   assert.match(page, /入力を反映/);
   assert.match(page, /回答を復元/);
@@ -157,6 +161,13 @@ test("keeps parser, interactions, three.js rendering, and GitHub Pages assets", 
   assert.doesNotMatch(renderer, /setAnimationLoop/);
   assert.doesNotMatch(renderer, /wireframe: true/);
   assert.match(renderer, /const edgePairs/);
+  assert.match(renderer, /focusOffsetFor/);
+  assert.match(renderer, /currentFocusX/);
+  assert.match(renderer, /new OrthographicCamera/);
+  assert.match(renderer, /focusViewpoint \? this\.orthographicCamera/);
+  assert.match(renderer, /"#f4f7ff"/);
+  assert.doesNotMatch(renderer, /"#d9ff70"/);
+  assert.match(css, /\.city-panel \{[^}]*display: flex/s);
   assert.match(css, /\.three-city-canvas/);
   assert.doesNotMatch(css, /transform-style: preserve-3d/);
   assert.match(page, /selectView\("north"/);

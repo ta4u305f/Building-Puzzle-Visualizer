@@ -179,7 +179,12 @@ details[open] > .disclosure-summary::after { content: "−"; }
 }
 .panel { min-width: 0; background: var(--white); }
 .puzzle-panel { border-right: 1px solid var(--ink); }
-.city-panel { background: #1c2230; color: var(--white); }
+.city-panel {
+  display: flex;
+  flex-direction: column;
+  background: #1c2230;
+  color: var(--white);
+}
 .panel-heading {
   min-height: 84px;
   padding: 18px clamp(20px, 3vw, 40px);
@@ -189,7 +194,8 @@ details[open] > .disclosure-summary::after { content: "−"; }
   border-bottom: 1px solid var(--ink);
 }
 .panel-heading--dark { border-bottom-color: #414757; }
-.reset-view {
+.view-actions { display: flex; align-items: center; gap: 7px; }
+.view-toggle, .reset-view {
   border: 1px solid #5d6371;
   background: transparent;
   color: #fff;
@@ -198,7 +204,7 @@ details[open] > .disclosure-summary::after { content: "−"; }
   letter-spacing: .11em;
   cursor: pointer;
 }
-.reset-view:hover { border-color: var(--acid); color: var(--acid); }
+.view-toggle:hover, .reset-view:hover { border-color: var(--acid); color: var(--acid); }
 
 .rules-details {
   border-bottom: 1px solid var(--line);
@@ -333,8 +339,8 @@ details[open] > .disclosure-summary::after { content: "−"; }
 
 .scene {
   position: relative;
-  height: 660px;
-  min-height: 560px;
+  flex: 1 1 660px;
+  min-height: 660px;
   overflow: hidden;
   touch-action: none;
   cursor: grab;
@@ -394,6 +400,8 @@ details[open] > .disclosure-summary::after { content: "−"; }
   white-space: nowrap;
   border: 0;
 }
+.view-controls { display: contents; }
+.view-controls[hidden] { display: none; }
 .view-rail {
   position: absolute;
   z-index: 8;
@@ -474,7 +482,7 @@ details[open] > .disclosure-summary::after { content: "−"; }
   .control-strip { grid-template-columns: 1fr auto; }
   .workspace { grid-template-columns: 1fr; }
   .puzzle-panel { border-right: 0; border-bottom: 1px solid var(--ink); }
-  .scene { height: 650px; }
+  .scene { flex-basis: 650px; min-height: 650px; }
 }
 
 @media (max-width: 760px) {
@@ -493,7 +501,7 @@ details[open] > .disclosure-summary::after { content: "−"; }
   .number-pad .clear-answer { width: 100%; }
   .board-footer { align-items: stretch; flex-direction: column; }
   .board-footer .button { width: 100%; }
-  .scene { height: 570px; min-height: 570px; }
+  .scene { flex-basis: 570px; min-height: 570px; }
   .view-rail--west { left: 6px; }
   .view-rail--east { right: 6px; }
   .view-rail button { width: 24px; height: 24px; font-size: 9px; }

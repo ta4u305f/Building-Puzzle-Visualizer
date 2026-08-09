@@ -21,6 +21,7 @@ import {
   Matrix4,
   Mesh,
   MeshBasicMaterial,
+  OrthographicCamera,
   PerspectiveCamera,
   PlaneGeometry,
   Quaternion,
@@ -40,7 +41,11 @@ export type CameraAngles = {
 };
 
 export type ThreeCityViewHandle = {
-  setCamera: (camera: CameraAngles, animate?: boolean) => void;
+  setCamera: (
+    camera: CameraAngles,
+    animate?: boolean,
+    viewpoint?: Viewpoint,
+  ) => void;
 };
 
 type ThreeCityViewProps = {
@@ -128,6 +133,14 @@ class CityRenderer {
   private readonly renderer: WebGLRenderer;
   private readonly scene = new Scene();
   private readonly camera = new PerspectiveCamera(45, 1, 1, 2200);
+  private readonly orthographicCamera = new OrthographicCamera(
+    -1,
+    1,
+    1,
+    -1,
+    1,
+    2200,
+  );
   private readonly world = new Group();
   private readonly resizeObserver: ResizeObserver;
   private readonly resources: Disposable[] = [];
@@ -139,6 +152,8 @@ class CityRenderer {
   private renderFrame: number | null = null;
   private riseAnimationFrame: number | null = null;
   private currentCamera: CameraAngles;
+  private currentFocusX = 0;
+  private focusViewpoint: Viewpoint = null;
   private grid: number[][] = [];
   private heightHues: readonly number[] = [];
   private size = 0;
@@ -162,7 +177,7 @@ class CityRenderer {
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.setClearColor(0x000000, 0);
     this.scene.add(this.world);
-    this.applyCameraRotation(this.currentCamera);
+    this.applyCameraView(this.currentCamera);
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
     this.resize();
@@ -181,21 +196,30 @@ class CityRenderer {
     this.rebuildWorld();
   }
 
-  setCamera(target: CameraAngles, animate = true) {
+  setCamera(
+    target: CameraAngles,
+    animate = true,
+    viewpoint: Viewpoint = this.focusViewpoint,
+  ) {
     if (this.cameraAnimationFrame !== null) {
       cancelAnimationFrame(this.cameraAnimationFrame);
       this.cameraAnimationFrame = null;
     }
 
+    const targetFocusX = this.focusOffsetFor(viewpoint, target);
+    this.focusViewpoint = viewpoint;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (!animate || reduceMotion) {
       this.currentCamera = { ...target };
-      this.applyCameraRotation(this.currentCamera);
+      this.currentFocusX = targetFocusX;
+      this.focusViewpoint = viewpoint;
+      this.applyCameraView(this.currentCamera);
       this.requestRender();
       return;
     }
 
     const startCamera = { ...this.currentCamera };
+    const startFocusX = this.currentFocusX;
     const endCamera = {
       tilt: target.tilt,
       rotation: shortestRotation(startCamera.rotation, target.rotation),
@@ -212,14 +236,18 @@ class CityRenderer {
           startCamera.rotation +
           (endCamera.rotation - startCamera.rotation) * progress,
       };
-      this.applyCameraRotation(this.currentCamera);
+      this.currentFocusX =
+        startFocusX + (targetFocusX - startFocusX) * progress;
+      this.applyCameraView(this.currentCamera);
       this.renderNow();
 
       if (elapsed < 1) {
         this.cameraAnimationFrame = requestAnimationFrame(update);
       } else {
         this.currentCamera = { ...target };
-        this.applyCameraRotation(this.currentCamera);
+        this.currentFocusX = targetFocusX;
+        this.focusViewpoint = viewpoint;
+        this.applyCameraView(this.currentCamera);
         this.cameraAnimationFrame = null;
       }
     };
@@ -283,14 +311,26 @@ class CityRenderer {
     this.camera.projectionMatrixInverse
       .copy(this.camera.projectionMatrix)
       .invert();
+    this.orthographicCamera.left = -width / 2;
+    this.orthographicCamera.right = width / 2;
+    this.orthographicCamera.top = height / 2;
+    this.orthographicCamera.bottom = -height / 2;
+    this.orthographicCamera.position.set(0, 0, CAMERA_PERSPECTIVE);
+    this.orthographicCamera.updateProjectionMatrix();
     this.world.position.y = groundCenterY;
 
     const nextWorldSize = Math.min(
-      isMobile ? 300 : 370,
-      window.innerWidth * (isMobile ? 0.7 : 0.62),
+      isMobile ? 320 : 520,
+      width * (isMobile ? 0.7 : 0.67),
+      height * (isMobile ? 0.58 : 0.64),
     );
     const sizeChanged = Math.abs(nextWorldSize - this.worldSize) > 0.5;
     this.worldSize = nextWorldSize;
+    this.currentFocusX = this.focusOffsetFor(
+      this.focusViewpoint,
+      this.currentCamera,
+    );
+    this.applyCameraView(this.currentCamera);
     if (sizeChanged && this.size > 0) this.rebuildWorld();
     this.requestRender();
   }
@@ -643,8 +683,8 @@ class CityRenderer {
       cellSize,
       towerSize,
       2.2,
-      "#d9ff70",
-      0.9,
+      "#f4f7ff",
+      0.95,
     );
   }
 
@@ -687,13 +727,31 @@ class CityRenderer {
     mesh.setMatrixAt(index, this.matrix);
   }
 
-  private applyCameraRotation(camera: CameraAngles) {
+  private focusOffsetFor(viewpoint: Viewpoint, camera: CameraAngles) {
+    if (!viewpoint || this.size < 1 || this.worldSize <= 0) return 0;
+
+    const cellSize = this.worldSize / this.size;
+    const localX =
+      -this.worldSize / 2 + (viewpoint.index + 0.5) * cellSize;
+    const localY =
+      this.worldSize / 2 - (viewpoint.index + 0.5) * cellSize;
+    const rotation = (camera.rotation * Math.PI) / 180;
+    const lineCenterX =
+      viewpoint.direction === "north" || viewpoint.direction === "south"
+        ? Math.cos(rotation) * localX
+        : Math.sin(rotation) * localY;
+
+    return -lineCenterX;
+  }
+
+  private applyCameraView(camera: CameraAngles) {
     this.world.rotation.set(
       (-camera.tilt * Math.PI) / 180,
       0,
       (-camera.rotation * Math.PI) / 180,
       "XYZ",
     );
+    this.world.position.x = this.currentFocusX;
   }
 
   private requestRender() {
@@ -705,7 +763,11 @@ class CityRenderer {
   }
 
   private renderNow() {
-    if (!this.disposed) this.renderer.render(this.scene, this.camera);
+    if (this.disposed) return;
+    this.renderer.render(
+      this.scene,
+      this.focusViewpoint ? this.orthographicCamera : this.camera,
+    );
   }
 }
 
@@ -719,8 +781,12 @@ const ThreeCityView = forwardRef<ThreeCityViewHandle, ThreeCityViewProps>(
     useImperativeHandle(
       ref,
       () => ({
-        setCamera(nextCamera, animate = true) {
-          rendererRef.current?.setCamera(nextCamera, animate);
+        setCamera(nextCamera, animate = true, nextViewpoint) {
+          rendererRef.current?.setCamera(
+            nextCamera,
+            animate,
+            nextViewpoint,
+          );
         },
       }),
       [],

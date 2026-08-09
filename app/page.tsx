@@ -180,7 +180,7 @@ function cameraFor(direction: Direction) {
     south: 0,
     west: -90,
   };
-  return { tilt: 66, rotation: rotations[direction] };
+  return { tilt: 90, rotation: rotations[direction] };
 }
 
 export default function Home() {
@@ -190,6 +190,7 @@ export default function Home() {
   const [grid, setGrid] = useState<number[][]>(() => copyGrid(INITIAL_DATA.grid));
   const [selected, setSelected] = useState<CellPosition | null>(null);
   const [viewpoint, setViewpoint] = useState<Viewpoint>(null);
+  const [showViewControls, setShowViewControls] = useState(true);
   const [message, setMessage] = useState("入力例の高さをGRIDと3Dビューへ反映しています。");
   const [parserText, setParserText] = useState(EXAMPLE_TEXT);
   const [parserFeedback, setParserFeedback] = useState<ParserFeedback>({
@@ -292,14 +293,14 @@ export default function Home() {
     const nextCamera = cameraFor(direction);
     setViewpoint({ direction, index });
     cameraRef.current = nextCamera;
-    cityViewRef.current?.setCamera(nextCamera);
+    cityViewRef.current?.setCamera(nextCamera, true, { direction, index });
     setMessage(`${conditionLabel(direction, index)} の視点に切り替えました。`);
   };
 
   const resetCamera = () => {
     setViewpoint(null);
     cameraRef.current = { ...DEFAULT_CAMERA };
-    cityViewRef.current?.setCamera(DEFAULT_CAMERA);
+    cityViewRef.current?.setCamera(DEFAULT_CAMERA, true, null);
     setMessage("俯瞰表示に戻しました。3Dエリアはドラッグで回転できます。");
   };
 
@@ -313,6 +314,7 @@ export default function Home() {
       rotation: cameraRef.current.rotation,
     };
     event.currentTarget.classList.add("is-dragging");
+    cityViewRef.current?.setCamera(cameraRef.current, false, null);
     setViewpoint(null);
   };
 
@@ -320,7 +322,7 @@ export default function Home() {
     const drag = dragState.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     const nextCamera = {
-      tilt: Math.max(34, Math.min(78, drag.tilt + (event.clientY - drag.y) * 0.18)),
+      tilt: Math.max(34, Math.min(90, drag.tilt + (event.clientY - drag.y) * 0.18)),
       rotation: drag.rotation + (event.clientX - drag.x) * 0.32,
     };
     cameraRef.current = nextCamera;
@@ -338,7 +340,7 @@ export default function Home() {
     setSelected(null);
     setViewpoint(null);
     cameraRef.current = { ...DEFAULT_CAMERA };
-    cityViewRef.current?.setCamera(DEFAULT_CAMERA);
+    cityViewRef.current?.setCamera(DEFAULT_CAMERA, true, null);
   };
 
   const changeSize = (nextSize: number) => {
@@ -663,9 +665,20 @@ export default function Home() {
         <article className="panel city-panel" aria-labelledby="city-title">
           <div className="panel-heading panel-heading--dark">
             <h2 id="city-title">3D View</h2>
-            <button className="reset-view" type="button" onClick={resetCamera}>
-              俯瞰表示
-            </button>
+            <div className="view-actions">
+              <button
+                className="view-toggle"
+                type="button"
+                aria-controls="viewpoint-controls"
+                aria-expanded={showViewControls}
+                onClick={() => setShowViewControls((current) => !current)}
+              >
+                {showViewControls ? "視点ボタンを隠す" : "視点ボタンを表示"}
+              </button>
+              <button className="reset-view" type="button" onClick={resetCamera}>
+                俯瞰表示
+              </button>
+            </div>
           </div>
 
           <div
@@ -678,29 +691,35 @@ export default function Home() {
           >
             <div className="scene-note">ドラッグで回転</div>
 
-            {(["north", "south", "west", "east"] as Direction[]).map((direction) => (
-              <div
-                className={`view-rail view-rail--${direction} ${size > 10 ? "is-dense" : ""}`}
-                key={direction}
-              >
-                <b>{directionLabels[direction]} {directionArrows[direction]}</b>
-                <div>
-                  {Array.from({ length: size }, (_, index) => (
-                    <button
-                      type="button"
-                      key={index}
-                      className={viewpoint?.direction === direction && viewpoint.index === index ? "is-active" : ""}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={() => selectView(direction, index)}
-                      aria-label={`${conditionLabel(direction, index)} の視点`}
-                      title={conditionLabel(direction, index)}
-                    >
-                      {index + 1}
-                    </button>
-                  ))}
+            <div
+              className="view-controls"
+              id="viewpoint-controls"
+              hidden={!showViewControls}
+            >
+              {(["north", "south", "west", "east"] as Direction[]).map((direction) => (
+                <div
+                  className={`view-rail view-rail--${direction} ${size > 10 ? "is-dense" : ""}`}
+                  key={direction}
+                >
+                  <b>{directionLabels[direction]} {directionArrows[direction]}</b>
+                  <div>
+                    {Array.from({ length: size }, (_, index) => (
+                      <button
+                        type="button"
+                        key={index}
+                        className={viewpoint?.direction === direction && viewpoint.index === index ? "is-active" : ""}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={() => selectView(direction, index)}
+                        aria-label={`${conditionLabel(direction, index)} の視点`}
+                        title={conditionLabel(direction, index)}
+                      >
+                        {index + 1}
+                      </button>
+                    ))}
                 </div>
               </div>
             ))}
+            </div>
 
             <Suspense fallback={null}>
               <ThreeCityView
