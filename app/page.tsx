@@ -4,7 +4,9 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type PointerEvent,
+  lazy,
   useMemo,
+  Suspense,
   useRef,
   useState,
 } from "react";
@@ -14,11 +16,18 @@ import {
   MIN_PUZZLE_SIZE,
   parsePuzzleText,
 } from "@/lib/puzzle-text.js";
-import { getVisualTowerHeight } from "@/lib/tower-height.js";
+import type { ThreeCityViewHandle } from "@/app/ThreeCityView";
+import { cameraForDirection } from "@/lib/three-city/camera-math.js";
+import { DEFAULT_CAMERA } from "@/lib/three-city/constants.js";
+import type {
+  CameraAngles,
+  Direction,
+  Viewpoint,
+} from "@/lib/three-city/types";
 
-type Direction = "north" | "east" | "south" | "west";
+const ThreeCityView = lazy(() => import("@/app/ThreeCityView"));
+
 type CellPosition = { row: number; col: number };
-type Viewpoint = { direction: Direction; index: number } | null;
 type Puzzle = {
   solution: number[][];
   clues: Record<Direction, number[]>;
@@ -58,7 +67,6 @@ const HEIGHT_HUES = [
   177, 332, 216, 63, 262,
   145, 16, 194, 315, 86,
 ] as const;
-
 function heightHue(height: number) {
   const paletteIndex = Math.max(0, height - 1) % HEIGHT_HUES.length;
   return HEIGHT_HUES[paletteIndex];
@@ -165,16 +173,6 @@ function getLine(grid: number[][], direction: Direction, index: number) {
   return direction === "north" ? column : column.reverse();
 }
 
-function cameraFor(direction: Direction) {
-  const rotations: Record<Direction, number> = {
-    north: 180,
-    east: 90,
-    south: 0,
-    west: -90,
-  };
-  return { tilt: 66, rotation: rotations[direction] };
-}
-
 export default function Home() {
   const [size, setSize] = useState(INITIAL_SIZE);
   const [seed, setSeed] = useState(INITIAL_SEED);
@@ -182,13 +180,12 @@ export default function Home() {
   const [grid, setGrid] = useState<number[][]>(() => copyGrid(INITIAL_DATA.grid));
   const [selected, setSelected] = useState<CellPosition | null>(null);
   const [viewpoint, setViewpoint] = useState<Viewpoint>(null);
-  const [camera, setCamera] = useState({ tilt: 61, rotation: -42 });
-  const [isDragging, setIsDragging] = useState(false);
+  const [showViewControls, setShowViewControls] = useState(true);
   const [message, setMessage] = useState("入力例の高さをGRIDと3Dビューへ反映しています。");
   const [parserText, setParserText] = useState(EXAMPLE_TEXT);
   const [parserFeedback, setParserFeedback] = useState<ParserFeedback>({
     kind: "success",
-    text: "requirements.mdの4×4入力例を初期表示しています。",
+    text: "4×4入力例を初期表示しています。",
   });
   const dragState = useRef<{
     pointerId: number;
@@ -197,6 +194,8 @@ export default function Home() {
     tilt: number;
     rotation: number;
   } | null>(null);
+  const cameraRef = useRef<CameraAngles>({ ...DEFAULT_CAMERA });
+  const cityViewRef = useRef<ThreeCityViewHandle>(null);
 
   const conflicts = useMemo(() => getConflicts(grid), [grid]);
   const filled = grid.flat().filter(Boolean).length;
@@ -281,14 +280,22 @@ export default function Home() {
   };
 
   const selectView = (direction: Direction, index: number) => {
+    const nextCamera = cameraForDirection(direction);
     setViewpoint({ direction, index });
-    setCamera(cameraFor(direction));
+    cameraRef.current = nextCamera;
+    cityViewRef.current?.setView({
+      mode: "clue",
+      direction,
+      index,
+      animate: true,
+    });
     setMessage(`${conditionLabel(direction, index)} の視点に切り替えました。`);
   };
 
   const resetCamera = () => {
     setViewpoint(null);
-    setCamera({ tilt: 61, rotation: -42 });
+    cameraRef.current = { ...DEFAULT_CAMERA };
+    cityViewRef.current?.setView({ mode: "overview", animate: true });
     setMessage("俯瞰表示に戻しました。3Dエリアはドラッグで回転できます。");
   };
 
@@ -298,33 +305,45 @@ export default function Home() {
       pointerId: event.pointerId,
       x: event.clientX,
       y: event.clientY,
-      tilt: camera.tilt,
-      rotation: camera.rotation,
+      tilt: cameraRef.current.tilt,
+      rotation: cameraRef.current.rotation,
     };
-    setIsDragging(true);
+    event.currentTarget.classList.add("is-dragging");
+    cityViewRef.current?.setView({
+      mode: "free",
+      camera: cameraRef.current,
+      animate: false,
+    });
     setViewpoint(null);
   };
 
   const dragCamera = (event: PointerEvent<HTMLDivElement>) => {
     const drag = dragState.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    setCamera({
-      tilt: Math.max(34, Math.min(78, drag.tilt + (event.clientY - drag.y) * 0.18)),
+    const nextCamera = {
+      tilt: Math.max(34, Math.min(90, drag.tilt + (event.clientY - drag.y) * 0.18)),
       rotation: drag.rotation + (event.clientX - drag.x) * 0.32,
+    };
+    cameraRef.current = nextCamera;
+    cityViewRef.current?.setView({
+      mode: "free",
+      camera: nextCamera,
+      animate: false,
     });
   };
 
   const stopDrag = (event: PointerEvent<HTMLDivElement>) => {
     if (dragState.current?.pointerId === event.pointerId) {
       dragState.current = null;
-      setIsDragging(false);
+      event.currentTarget.classList.remove("is-dragging");
     }
   };
 
   const resetInteraction = () => {
     setSelected(null);
     setViewpoint(null);
-    setCamera({ tilt: 61, rotation: -42 });
+    cameraRef.current = { ...DEFAULT_CAMERA };
+    cityViewRef.current?.setView({ mode: "overview", animate: true });
   };
 
   const changeSize = (nextSize: number) => {
@@ -407,7 +426,7 @@ export default function Home() {
     setParserText(formatPuzzleText(puzzle, grid));
     setParserFeedback({
       kind: "success",
-      text: "現在の条件値と盤面を、requirements.md準拠のテキストに変換しました。",
+      text: "現在の条件値と盤面をテキストに変換しました。",
     });
   };
 
@@ -432,12 +451,6 @@ export default function Home() {
       ? col === viewpoint.index
       : row === viewpoint.index;
   };
-
-  const worldStyle = {
-    "--camera-tilt": `${camera.tilt}deg`,
-    "--camera-rotation": `${camera.rotation}deg`,
-    "--grid-step": `${100 / size}%`,
-  } as CSSProperties;
 
   return (
     <main className="app-shell">
@@ -655,13 +668,24 @@ export default function Home() {
         <article className="panel city-panel" aria-labelledby="city-title">
           <div className="panel-heading panel-heading--dark">
             <h2 id="city-title">3D View</h2>
-            <button className="reset-view" type="button" onClick={resetCamera}>
-              俯瞰表示
-            </button>
+            <div className="view-actions">
+              <button
+                className="view-toggle"
+                type="button"
+                aria-controls="viewpoint-controls"
+                aria-expanded={showViewControls}
+                onClick={() => setShowViewControls((current) => !current)}
+              >
+                {showViewControls ? "視点ボタンを隠す" : "視点ボタンを表示"}
+              </button>
+              <button className="reset-view" type="button" onClick={resetCamera}>
+                俯瞰表示
+              </button>
+            </div>
           </div>
 
           <div
-            className={`scene ${isDragging ? "is-dragging" : ""}`}
+            className="scene"
             onPointerDown={startDrag}
             onPointerMove={dragCamera}
             onPointerUp={stopDrag}
@@ -670,66 +694,45 @@ export default function Home() {
           >
             <div className="scene-note">ドラッグで回転</div>
 
-            {(["north", "south", "west", "east"] as Direction[]).map((direction) => (
-              <div
-                className={`view-rail view-rail--${direction} ${size > 10 ? "is-dense" : ""}`}
-                key={direction}
-              >
-                <b>{directionLabels[direction]} {directionArrows[direction]}</b>
-                <div>
-                  {Array.from({ length: size }, (_, index) => (
-                    <button
-                      type="button"
-                      key={index}
-                      className={viewpoint?.direction === direction && viewpoint.index === index ? "is-active" : ""}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={() => selectView(direction, index)}
-                      aria-label={`${conditionLabel(direction, index)} の視点`}
-                      title={conditionLabel(direction, index)}
-                    >
-                      {index + 1}
-                    </button>
-                  ))}
+            <div
+              className="view-controls"
+              id="viewpoint-controls"
+              hidden={!showViewControls}
+            >
+              {(["north", "south", "west", "east"] as Direction[]).map((direction) => (
+                <div
+                  className={`view-rail view-rail--${direction} ${size > 10 ? "is-dense" : ""}`}
+                  key={direction}
+                >
+                  <b>{directionLabels[direction]} {directionArrows[direction]}</b>
+                  <div>
+                    {Array.from({ length: size }, (_, index) => (
+                      <button
+                        type="button"
+                        key={index}
+                        className={viewpoint?.direction === direction && viewpoint.index === index ? "is-active" : ""}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={() => selectView(direction, index)}
+                        aria-label={`${conditionLabel(direction, index)} の視点`}
+                        title={conditionLabel(direction, index)}
+                      >
+                        {index + 1}
+                      </button>
+                    ))}
                 </div>
               </div>
             ))}
-
-            <div className="city-stage">
-              <div className="world" style={worldStyle}>
-                <div className="ground" />
-                {grid.flatMap((row, rowIndex) =>
-                  row.map((height, colIndex) => {
-                    const towerHeight = getVisualTowerHeight(height, size);
-                    const lotStyle = {
-                      left: `${(colIndex * 100) / size}%`,
-                      top: `${(rowIndex * 100) / size}%`,
-                      width: `${100 / size}%`,
-                      height: `${100 / size}%`,
-                      "--tower-height": `${towerHeight}px`,
-                      "--tower-hue": `${heightHue(height)}`,
-                    } as CSSProperties;
-                    return (
-                      <div
-                        className={`city-lot ${height ? "has-building" : "is-empty"} ${viewpoint && isHighlighted(rowIndex, colIndex) ? "is-view-line" : ""}`}
-                        style={lotStyle}
-                        key={`tower-${rowIndex}-${colIndex}`}
-                      >
-                        <div className="lot-pad"><span /></div>
-                        {height > 0 && (
-                          <div className="tower" role="img" aria-label={`高さ ${height} の直方体`}>
-                            <div className="tower-face tower-face--north" />
-                            <div className="tower-face tower-face--south" />
-                            <div className="tower-face tower-face--east" />
-                            <div className="tower-face tower-face--west" />
-                            <div className="tower-roof"><span>{height}</span></div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }),
-                )}
-              </div>
             </div>
+
+            <Suspense fallback={null}>
+              <ThreeCityView
+                grid={grid}
+                heightHues={HEIGHT_HUES}
+                ref={cityViewRef}
+                size={size}
+                viewpoint={viewpoint}
+              />
+            </Suspense>
           </div>
 
           <div className="view-footer">
