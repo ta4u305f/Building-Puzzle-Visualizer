@@ -64,8 +64,9 @@ export class CityRenderer {
   }
 
   setViewpoint(viewpoint: Viewpoint) {
-    this.sceneBuilder.setViewpoint(viewpoint);
-    this.requestRender();
+    if (this.sceneBuilder.setViewpoint(viewpoint)) {
+      this.requestRender();
+    }
   }
 
   dispose() {

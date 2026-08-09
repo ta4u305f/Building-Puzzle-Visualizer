@@ -161,10 +161,10 @@ export class CitySceneBuilder {
   }
 
   setViewpoint(viewpoint: Viewpoint) {
-    if (sameViewpoint(this.viewpoint, viewpoint)) return;
+    if (sameViewpoint(this.viewpoint, viewpoint)) return false;
     this.viewpoint = viewpoint ? { ...viewpoint } : null;
     this.updateHighlights();
-    this.render();
+    return true;
   }
 
   dispose() {
@@ -200,7 +200,6 @@ export class CitySceneBuilder {
       this.animateRise();
     }
     this.firstBuild = false;
-    this.render();
   }
 
   private clear() {
@@ -493,7 +492,6 @@ export class CitySceneBuilder {
     this.roofDetails.instanceMatrix.needsUpdate = true;
     this.updateEdges(this.normalEdges, this.cells, towerSize, 0.8);
     this.updateHighlights();
-    this.render();
   }
 
   private updateLots() {

@@ -280,6 +280,26 @@ test("keeps the UI while separating React, camera, scene, and rendering", async 
   assert.match(sceneBuilder, /else if \(gridChanged\)/);
   assert.match(sceneBuilder, /setViewpoint\(viewpoint/);
   assert.match(sceneBuilder, /this\.updateHighlights\(\)/);
+  assert.match(
+    renderer,
+    /if \(this\.sceneBuilder\.setViewpoint\(viewpoint\)\) \{\s*this\.requestRender\(\);\s*\}/,
+  );
+  const setViewpointMethod = sceneBuilder.slice(
+    sceneBuilder.indexOf("  setViewpoint("),
+    sceneBuilder.indexOf("\n  dispose()"),
+  );
+  const rebuildMethod = sceneBuilder.slice(
+    sceneBuilder.indexOf("  private rebuild()"),
+    sceneBuilder.indexOf("\n  private clear()"),
+  );
+  const updateGridMethod = sceneBuilder.slice(
+    sceneBuilder.indexOf("  private updateGrid()"),
+    sceneBuilder.indexOf("\n  private updateLots()"),
+  );
+  assert.match(setViewpointMethod, /return true/);
+  assert.doesNotMatch(setViewpointMethod, /this\.render\(\)/);
+  assert.doesNotMatch(rebuildMethod, /this\.render\(\)/);
+  assert.doesNotMatch(updateGridMethod, /this\.render\(\)/);
   assert.doesNotMatch(sceneBuilder, /wireframe: true|rebuildWorld/);
   assert.match(cameraController, /new OrthographicCamera/);
   assert.match(cameraController, /projectionModeFor\(this\.focusViewpoint\)/);
