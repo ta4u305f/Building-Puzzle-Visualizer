@@ -16,16 +16,18 @@ import {
   MIN_PUZZLE_SIZE,
   parsePuzzleText,
 } from "@/lib/puzzle-text.js";
+import type { ThreeCityViewHandle } from "@/app/ThreeCityView";
+import { cameraForDirection } from "@/lib/three-city/camera-math.js";
+import { DEFAULT_CAMERA } from "@/lib/three-city/constants.js";
 import type {
   CameraAngles,
-  ThreeCityViewHandle,
-} from "@/app/ThreeCityView";
+  Direction,
+  Viewpoint,
+} from "@/lib/three-city/types";
 
 const ThreeCityView = lazy(() => import("@/app/ThreeCityView"));
 
-type Direction = "north" | "east" | "south" | "west";
 type CellPosition = { row: number; col: number };
-type Viewpoint = { direction: Direction; index: number } | null;
 type Puzzle = {
   solution: number[][];
   clues: Record<Direction, number[]>;
@@ -65,8 +67,6 @@ const HEIGHT_HUES = [
   177, 332, 216, 63, 262,
   145, 16, 194, 315, 86,
 ] as const;
-const DEFAULT_CAMERA: CameraAngles = { tilt: 61, rotation: -42 };
-
 function heightHue(height: number) {
   const paletteIndex = Math.max(0, height - 1) % HEIGHT_HUES.length;
   return HEIGHT_HUES[paletteIndex];
@@ -171,16 +171,6 @@ function getLine(grid: number[][], direction: Direction, index: number) {
   if (direction === "east") return [...grid[index]].reverse();
   const column = grid.map((row) => row[index]);
   return direction === "north" ? column : column.reverse();
-}
-
-function cameraFor(direction: Direction) {
-  const rotations: Record<Direction, number> = {
-    north: 180,
-    east: 90,
-    south: 0,
-    west: -90,
-  };
-  return { tilt: 90, rotation: rotations[direction] };
 }
 
 export default function Home() {
@@ -290,17 +280,22 @@ export default function Home() {
   };
 
   const selectView = (direction: Direction, index: number) => {
-    const nextCamera = cameraFor(direction);
+    const nextCamera = cameraForDirection(direction);
     setViewpoint({ direction, index });
     cameraRef.current = nextCamera;
-    cityViewRef.current?.setCamera(nextCamera, true, { direction, index });
+    cityViewRef.current?.setView({
+      mode: "clue",
+      direction,
+      index,
+      animate: true,
+    });
     setMessage(`${conditionLabel(direction, index)} の視点に切り替えました。`);
   };
 
   const resetCamera = () => {
     setViewpoint(null);
     cameraRef.current = { ...DEFAULT_CAMERA };
-    cityViewRef.current?.setCamera(DEFAULT_CAMERA, true, null);
+    cityViewRef.current?.setView({ mode: "overview", animate: true });
     setMessage("俯瞰表示に戻しました。3Dエリアはドラッグで回転できます。");
   };
 
@@ -314,7 +309,11 @@ export default function Home() {
       rotation: cameraRef.current.rotation,
     };
     event.currentTarget.classList.add("is-dragging");
-    cityViewRef.current?.setCamera(cameraRef.current, false, null);
+    cityViewRef.current?.setView({
+      mode: "free",
+      camera: cameraRef.current,
+      animate: false,
+    });
     setViewpoint(null);
   };
 
@@ -326,7 +325,11 @@ export default function Home() {
       rotation: drag.rotation + (event.clientX - drag.x) * 0.32,
     };
     cameraRef.current = nextCamera;
-    cityViewRef.current?.setCamera(nextCamera, false);
+    cityViewRef.current?.setView({
+      mode: "free",
+      camera: nextCamera,
+      animate: false,
+    });
   };
 
   const stopDrag = (event: PointerEvent<HTMLDivElement>) => {
@@ -340,7 +343,7 @@ export default function Home() {
     setSelected(null);
     setViewpoint(null);
     cameraRef.current = { ...DEFAULT_CAMERA };
-    cityViewRef.current?.setCamera(DEFAULT_CAMERA, true, null);
+    cityViewRef.current?.setView({ mode: "overview", animate: true });
   };
 
   const changeSize = (nextSize: number) => {
@@ -723,7 +726,6 @@ export default function Home() {
 
             <Suspense fallback={null}>
               <ThreeCityView
-                camera={DEFAULT_CAMERA}
                 grid={grid}
                 heightHues={HEIGHT_HUES}
                 ref={cityViewRef}
