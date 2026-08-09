@@ -104,10 +104,11 @@ test("exports the internal building puzzle visualizer", async () => {
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|Your site is taking shape/);
 });
 
-test("keeps parser, interactions, 3D depth, and GitHub Pages assets", async () => {
-  const [page, css, parser, config, workflow] = await Promise.all([
+test("keeps parser, interactions, three.js rendering, and GitHub Pages assets", async () => {
+  const [page, css, renderer, parser, config, workflow] = await Promise.all([
     readFile(new URL("app/page.tsx", root), "utf8"),
     readFile(new URL("app/globals.css", root), "utf8"),
+    readFile(new URL("app/ThreeCityView.tsx", root), "utf8"),
     readFile(new URL("lib/puzzle-text.js", root), "utf8"),
     readFile(new URL("next.config.ts", root), "utf8"),
     readFile(new URL(".github/workflows/deploy-pages.yml", root), "utf8"),
@@ -118,7 +119,7 @@ test("keeps parser, interactions, 3D depth, and GitHub Pages assets", async () =
   assert.match(page, /parsePuzzleText/);
   assert.match(page, /formatPuzzleText/);
   assert.match(page, /const HEIGHT_HUES/);
-  assert.match(page, /getVisualTowerHeight\(height, size\)/);
+  assert.match(renderer, /getVisualTowerHeight\(height, this.size\)/);
   assert.match(page, /north: 180/);
   assert.match(page, /south: 0/);
   assert.match(page, /west: -90/);
@@ -127,7 +128,7 @@ test("keeps parser, interactions, 3D depth, and GitHub Pages assets", async () =
   assert.match(page, /copyGrid\(INITIAL_DATA\.grid\)/);
   assert.match(page, /setGrid\(copyGrid\(nextPuzzle\.solution\)\)/);
   assert.match(page, /className="height-legend"/);
-  assert.match(page, /高さ \$\{height\} の直方体/);
+  assert.match(renderer, /高さ \$\{height\} の直方体/);
   assert.match(page, /入力を反映/);
   assert.match(page, /回答を復元/);
   assert.match(page, /条件のみ生成/);
@@ -149,6 +150,15 @@ test("keeps parser, interactions, 3D depth, and GitHub Pages assets", async () =
   assert.doesNotMatch(page, /FREE VIEW|LOCAL STATE|LIVE SYNC|axis-legend|panel-number|>CAMERA</);
   assert.doesNotMatch(page, /高さを復元|brand-mark/);
   assert.match(page, /onPointerMove=\{dragCamera\}/);
+  assert.match(page, /cityViewRef\.current\?\.setCamera\(nextCamera, false\)/);
+  assert.match(renderer, /new WebGLRenderer/);
+  assert.match(renderer, /new InstancedMesh/);
+  assert.match(renderer, /requestRender\(\)/);
+  assert.doesNotMatch(renderer, /setAnimationLoop/);
+  assert.doesNotMatch(renderer, /wireframe: true/);
+  assert.match(renderer, /const edgePairs/);
+  assert.match(css, /\.three-city-canvas/);
+  assert.doesNotMatch(css, /transform-style: preserve-3d/);
   assert.match(page, /selectView\("north"/);
   assert.doesNotMatch(css, /\.tower\s*\{[^}]*filter:/s);
   assert.doesNotMatch(css, /\.puzzle-cell i/);
