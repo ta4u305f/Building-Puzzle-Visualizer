@@ -185,7 +185,7 @@ export default function Home() {
   const [parserText, setParserText] = useState(EXAMPLE_TEXT);
   const [parserFeedback, setParserFeedback] = useState<ParserFeedback>({
     kind: "success",
-    text: "requirements.mdの4×4入力例を初期表示しています。",
+    text: "4×4入力例を初期表示しています。",
   });
   const dragState = useRef<{
     pointerId: number;
@@ -426,7 +426,7 @@ export default function Home() {
     setParserText(formatPuzzleText(puzzle, grid));
     setParserFeedback({
       kind: "success",
-      text: "現在の条件値と盤面を、requirements.md準拠のテキストに変換しました。",
+      text: "現在の条件値と盤面をテキストに変換しました。",
     });
   };
 
